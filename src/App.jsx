@@ -643,7 +643,7 @@ export default function FamilyScheduler() {
 
   async function sendMessage(text) {
     if (!text.trim() || loading) return;
-    const calData = JSON.stringify(events.slice(0, 60), null, 2);
+    const calData = JSON.stringify(events.slice(0, 30), null, 2);
     const tagLines = Object.entries(eventLabels).map(([id, tag]) => {
       const ev = events.find(e => e.id === id);
       return ev ? `"${ev.summary}" → ${tag}` : null;
@@ -655,13 +655,23 @@ export default function FamilyScheduler() {
     setInput("");
     setLoading(true);
 
+    // Strip calendar data from history to avoid sending it repeatedly
+    const recentMsgs = newMsgs.slice(-8);
+    const apiMsgs = recentMsgs.map((m, i) => {
+      const isLast = i === recentMsgs.length - 1;
+      const content = (!isLast && m.role === "user")
+        ? m.content.replace(/^CALENDAR DATA:[\s\S]*?USER:\s*/m, "")
+        : m.content;
+      return { role: m.role, content };
+    });
+
     try {
       const res = await fetch("/.netlify/functions/chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "claude-sonnet-4-6", max_tokens: 3500,
           system: buildSystemPrompt(partnerAName, partnerBName, events, eventLabels, rules),
-          messages: newMsgs.map(m => ({ role: m.role, content: m.content })),
+          messages: apiMsgs,
         }),
       });
       const data = await res.json();
