@@ -659,12 +659,17 @@ export default function FamilyScheduler() {
       const res = await fetch("/.netlify/functions/chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514", max_tokens: 4000,
+          model: "claude-sonnet-4-6", max_tokens: 4000,
           system: buildSystemPrompt(partnerAName, partnerBName, events, eventLabels, rules),
           messages: newMsgs.map(m => ({ role: m.role, content: m.content })),
         }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        const errMsg = data?.details?.error?.message || data?.error || `Error ${res.status}`;
+        setMessages(prev => [...prev, { role: "assistant", content: `Something went wrong: ${errMsg}` }]);
+        setLoading(false); return;
+      }
       const raw = data.content?.[0]?.text || "Something went wrong.";
 
       // Parse SCHEDULE
