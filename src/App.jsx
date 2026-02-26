@@ -68,58 +68,36 @@ function buildSystemPrompt(a, b, events, labels, rules) {
     `- ${r.name}: ${r.startTime}–${r.endTime}, assigned: ${r.who}, days: ${r.days.join(",")}${r.note ? ` (${r.note})` : ""}`
   ).join("\n");
 
-  return `You are a warm family scheduling assistant for ${a} and ${b}. Not micromanage-y — suggest practical rhythms.
+  return `CRITICAL OUTPUT RULES — follow exactly, no exceptions:
+1. When suggesting a schedule: output ONLY <SCHEDULE>...</SCHEDULE> then <SUMMARY>...</SUMMARY> then 2 plain sentences. NO text before <SCHEDULE>. NO markdown. NO headers.
+2. Use compact block keys: {"s":"HH:MM","e":"HH:MM","t":"title","w":"who"} — nothing else in each block.
+3. Labels must be "Day Date" only e.g. "Mon Feb 24" — no annotations.
+4. Include ALL 14 days in <SCHEDULE>. WHO values: "family","nora","patrick","work","exercise","kids","free","split","alternate"
+5. <SUMMARY> format: {"week1":{"nora":{"workHours":0,"parentingHours":0,"exerciseHours":0,"freeHours":0},"patrick":{...},"notes":"..."},"week2":{...}}
 
-HOUSEHOLD RULES (daily anchors — apply as baseline, adjust around actual events):
+You are a warm family scheduling assistant for ${a} and ${b}. Suggest practical rhythms, not micromanagement.
+
+HOUSEHOLD RULES:
 ${ruleLines}
 
 WORK HOURS RULES:
 - Each parent needs exactly 45 hours/week of work
 - Work can happen 6am–10pm, but ONLY when the other parent is with the kids during kid-coverage windows
 - Kid coverage windows: 7:00am–9:00am (morning) and 4:20pm–10:00pm (evening/night)
-- During those windows, one parent can work IF the other is confirmed to be with the kids
 - Dinner together 7:00–7:30pm is sacred — neither parent works then
 - Bedtime 7:30–8:30pm: both parents engaged with kids (split or one solo)
 - Work travel days: assume traveling parent works 9 hours that day
-- PTO days: subtract 9 hours from that person's weekly target (so 36h that week)
-- When one parent is traveling/away: the home parent covers all kid tasks; those solo parenting hours bank as equity
+- When one parent is traveling: home parent covers all kid tasks; solo parenting hours bank as equity
 
 FIXED DAILY ANCHORS:
-- Morning/breakfast: 7:00–8:20am (preferred together as a family; alternate if one parent is traveling or needs morning hours for work)
-- Drop-off: 8:20–9:00am
-- Pickup: 4:20–5:00pm
-- Dinner together: 7:00–7:30pm (ALWAYS both, no exceptions)
+- Morning/breakfast: 7:00–8:20am (preferred together; alternate if one parent traveling or needs morning work hours)
+- Drop-off: 8:20–9:00am · Pickup: 4:20–5:00pm
+- Dinner together: 7:00–7:30pm (always, no exceptions)
 - Bedtime: 7:30–8:30pm (preferred split, one solo OK)
-- Exercise: 1 hour each, every day, any time during waking hours — schedule flexibly around other commitments
+- Exercise: 1 hour each, daily, any time during waking hours
 
-EVENT TAGS (user labeled — ground truth):
-${tagLines || "None yet — infer from names/context."}
-
-CALENDAR DATA sent with each message.
-
-─── WEEKLY SUMMARY ───
-Always include a <SUMMARY> block with calculated totals for each person each week:
-<SUMMARY>
-{
-  "week1": {
-    "nora": { "workHours": 45, "parentingHours": 22, "exerciseHours": 3, "freeHours": 8 },
-    "patrick": { "workHours": 45, "parentingHours": 16, "exerciseHours": 2, "freeHours": 12 },
-    "notes": "Patrick banks 6h parenting equity from Nora's Ojai trip"
-  },
-  "week2": {
-    "nora": { "workHours": 45, "parentingHours": 18, "exerciseHours": 3, "freeHours": 10 },
-    "patrick": { "workHours": 45, "parentingHours": 20, "exerciseHours": 3, "freeHours": 8 },
-    "notes": "Nora makes up equity — takes extra bedtimes and weekend activities"
-  }
-}
-</SUMMARY>
-
-─── SCHEDULE FORMAT ───
-When suggesting schedules: output <SCHEDULE> FIRST, then <SUMMARY>, then 2-3 sentences of plain text (no markdown, no headers).
-Use compact block format. Labels must be "Day Date" only (e.g. "Mon Feb 24"). Omit notes from blocks.
-<SCHEDULE>[{"date":"YYYY-MM-DD","label":"Mon Feb 24","blocks":[{"s":"HH:MM","e":"HH:MM","t":"title","w":"who"}]}]</SCHEDULE>
-WHO values: "family", "nora", "patrick", "work", "exercise", "kids", "chores", "free", "split", "alternate"
-Include ALL 14 days. Show both people's blocks on same day.
+EVENT TAGS: ${tagLines || "None yet."}
+CALENDAR DATA sent with each message.`;
 
 For GCal push:
 <GCAL_EVENTS>[{"summary":"...","start":{"dateTime":"...","timeZone":"America/New_York"},"end":{"dateTime":"...","timeZone":"America/New_York"},"colorId":"..."}]</GCAL_EVENTS>`;
@@ -656,31 +634,59 @@ export default function FamilyScheduler() {
       }
       const raw = data.content?.[0]?.text || "Something went wrong.";
 
-      // Parse SCHEDULE
-      console.log("AI raw response:", raw);
-      const schedMatch = raw.match(/<SCHEDULE>([\s\S]*?)<\/SCHEDULE>/);
-      console.log("Schedule match:", schedMatch ? schedMatch[1].trim().slice(0, 200) : "none");
-      if (schedMatch) {
-        try {
-          const parsed = JSON.parse(schedMatch[1].trim());
-          const normalized = parsed.map(day => ({
-            ...day,
-            blocks: (day.blocks || []).map(b => ({
-              start: b.start || b.s || "",
-              end: b.end || b.e || "",
-              title: b.title || b.t || "",
-              who: b.who || b.w || "",
-              note: b.note || b.n || "",
-            }))
-          }));
-          setScheduleDays(prev => {
-            const map = {};
-            prev.forEach(d => map[d.date] = d);
-            normalized.forEach(d => map[d.date] = d);
-            return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
-          });
-          if (parsed.length > 0) { setSelectedDay(parsed[0].date); setActiveTab("schedule-2wk"); }
-        } catch (e) { console.error("Schedule parse error:", e, schedMatch[1].trim().slice(0, 500)); }
+      // Extract complete day objects from JSON even if truncated
+      function parseScheduleRobust(text) {
+        const startIdx = text.indexOf("<SCHEDULE>");
+        if (startIdx === -1) return null;
+        const inner = text.slice(startIdx + "<SCHEDULE>".length);
+        // Try full parse first
+        const endIdx = inner.indexOf("</SCHEDULE>");
+        if (endIdx !== -1) {
+          try { return JSON.parse(inner.slice(0, endIdx).trim()); } catch {}
+        }
+        // Fallback: extract complete top-level objects using brace counting
+        const days = [];
+        let depth = 0, start = -1;
+        for (let i = 0; i < inner.length; i++) {
+          if (inner[i] === "{") { if (depth === 0) start = i; depth++; }
+          else if (inner[i] === "}") {
+            depth--;
+            if (depth === 0 && start !== -1) {
+              try {
+                const obj = JSON.parse(inner.slice(start, i + 1));
+                if (obj.date) days.push(obj);
+              } catch {}
+              start = -1;
+            }
+          }
+        }
+        return days.length > 0 ? days : null;
+      }
+
+      function normalizeBlocks(days) {
+        return days.map(day => ({
+          ...day,
+          blocks: (day.blocks || []).map(b => ({
+            start: b.start || b.s || "",
+            end: b.end || b.e || "",
+            title: b.title || b.t || "",
+            who: b.who || b.w || "",
+            note: b.note || b.n || "",
+          }))
+        }));
+      }
+
+      const parsed = parseScheduleRobust(raw);
+      if (parsed && parsed.length > 0) {
+        const normalized = normalizeBlocks(parsed);
+        setScheduleDays(prev => {
+          const map = {};
+          prev.forEach(d => map[d.date] = d);
+          normalized.forEach(d => map[d.date] = d);
+          return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
+        });
+        setSelectedDay(normalized[0].date);
+        setActiveTab("schedule-2wk");
       }
 
       // Parse SUMMARY
@@ -694,8 +700,9 @@ export default function FamilyScheduler() {
       let gcalEvents = null;
       if (gcalMatch) { try { gcalEvents = JSON.parse(gcalMatch[1].trim()); setPendingGcalEvents(gcalEvents); } catch {} }
 
+      // Show only text before <SCHEDULE> (strips raw JSON from chat)
       const displayText = raw
-        .replace(/<SCHEDULE>[\s\S]*?<\/SCHEDULE>/g, "")
+        .replace(/<SCHEDULE>[\s\S]*/s, "")
         .replace(/<SUMMARY>[\s\S]*?<\/SUMMARY>/g, "")
         .replace(/<GCAL_EVENTS>[\s\S]*?<\/GCAL_EVENTS>/g, "")
         .trim();
