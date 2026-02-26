@@ -670,6 +670,8 @@ export default function FamilyScheduler() {
         setLoading(false); return;
       }
       const raw = data.content?.[0]?.text || "Something went wrong.";
+      console.log("hasScheduleTag:", raw.includes("<SCHEDULE>"));
+      console.log("raw first 300:", raw.slice(0, 300));
 
       const parsed = parseScheduleRobust(raw);
       if (parsed && parsed.length > 0) {
@@ -695,6 +697,7 @@ export default function FamilyScheduler() {
       let gcalEvents = null;
       if (gcalMatch) { try { gcalEvents = JSON.parse(gcalMatch[1].trim()); setPendingGcalEvents(gcalEvents); } catch {} }
 
+      console.log("parsed days count:", parsed ? parsed.length : 0);
       // Show only text before <SCHEDULE> — simple split avoids any regex edge cases
       const displayText = raw.split("<SCHEDULE>")[0]
         .replace(/<SUMMARY>[\s\S]*?<\/SUMMARY>/g, "")
