@@ -16,12 +16,12 @@ const DEMO_EVENTS = [
 ];
 
 const DEFAULT_RULES = [
-  { id: "r1", name: "Morning / breakfast", startTime: "07:00", endTime: "08:20", who: "family", days: ["mon","tue","wed","thu","fri"], note: "Preferred together, solo is fine when schedules conflict" },
+  { id: "r1", name: "Morning / breakfast", startTime: "07:00", endTime: "08:20", who: "family", days: ["mon","tue","wed","thu","fri"], note: "Preferred together as a family; alternate if one parent is traveling or needs morning hours for work" },
   { id: "r2", name: "School drop-off", startTime: "08:20", endTime: "09:00", who: "alternate", days: ["mon","tue","wed","thu","fri"], note: "Alternate by default" },
   { id: "r3", name: "School pickup", startTime: "16:20", endTime: "17:00", who: "alternate", days: ["mon","tue","wed","thu","fri"], note: "" },
   { id: "r4", name: "Dinner together", startTime: "19:00", endTime: "19:30", who: "family", days: ["mon","tue","wed","thu","fri","sat","sun"], note: "Always together" },
   { id: "r5", name: "Bedtime routine", startTime: "19:30", endTime: "20:30", who: "split", days: ["mon","tue","wed","thu","fri","sat","sun"], note: "Preferred split, solo is fine when needed" },
-  { id: "r6", name: "Exercise", startTime: "06:00", endTime: "07:00", who: "each", days: ["mon","wed","fri"], note: "Each finds their own slot" },
+  { id: "r6", name: "Exercise", startTime: "06:00", endTime: "07:00", who: "each", days: ["mon","tue","wed","thu","fri","sat","sun"], note: "1 hour each, daily, any time during waking hours — schedule flexibly around other commitments" },
 ];
 
 const WHO_OPTIONS = [
@@ -85,11 +85,12 @@ WORK HOURS RULES:
 - When one parent is traveling/away: the home parent covers all kid tasks; those solo parenting hours bank as equity
 
 FIXED DAILY ANCHORS:
-- Morning/breakfast: 7:00–8:20am (preferred together, solo OK)
+- Morning/breakfast: 7:00–8:20am (preferred together as a family; alternate if one parent is traveling or needs morning hours for work)
 - Drop-off: 8:20–9:00am
 - Pickup: 4:20–5:00pm
 - Dinner together: 7:00–7:30pm (ALWAYS both, no exceptions)
 - Bedtime: 7:30–8:30pm (preferred split, one solo OK)
+- Exercise: 1 hour each, every day, any time during waking hours — schedule flexibly around other commitments
 
 EVENT TAGS (user labeled — ground truth):
 ${tagLines || "None yet — infer from names/context."}
@@ -151,7 +152,7 @@ function getWeekDays(startDate) {
 }
 function getEventsForDay(events, day) {
   return events.filter(ev => {
-    const dayStr = day.toISOString().split("T")[0];
+    const dayStr = `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,"0")}-${String(day.getDate()).padStart(2,"0")}`;
     if (ev.start?.date) return dayStr >= ev.start.date && dayStr < (ev.end?.date || ev.start.date);
     return ev.start?.dateTime?.split("T")[0] === dayStr;
   });
@@ -566,6 +567,7 @@ function Message({ msg }) {
 export default function FamilyScheduler() {
   const [view, setView] = useState(() => load("fs_setup_done", false) ? "app" : "setup");
   const [gcalToken, setGcalToken] = useState(() => load("fs_gcal_token", ""));
+  const [gcalTokenTime, setGcalTokenTime] = useState(() => load("fs_gcal_token_time", null));
   const [calendarId, setCalendarId] = useState(() => load("fs_cal_id", "primary"));
   const [partnerAName, setPartnerAName] = useState(() => load("fs_name_a", "Nora"));
   const [partnerBName, setPartnerBName] = useState(() => load("fs_name_b", "Patrick"));
@@ -596,6 +598,7 @@ export default function FamilyScheduler() {
   useEffect(() => { save("fs_name_a", partnerAName); }, [partnerAName]);
   useEffect(() => { save("fs_name_b", partnerBName); }, [partnerBName]);
   useEffect(() => { save("fs_gcal_token", gcalToken); }, [gcalToken]);
+  useEffect(() => { save("fs_gcal_token_time", gcalTokenTime); }, [gcalTokenTime]);
   useEffect(() => { save("fs_cal_id", calendarId); }, [calendarId]);
   useEffect(() => { save("fs_rules", rules); }, [rules]);
   useEffect(() => { save("fs_schedule", scheduleDays); }, [scheduleDays]);
@@ -740,7 +743,7 @@ export default function FamilyScheduler() {
               <div style={{ height: "1px", background: "rgba(255,255,255,0.06)", margin: "1.5rem 0" }} />
               <div style={{ marginBottom: "1.5rem" }}>
                 <label style={{ display: "block", fontSize: "0.7rem", fontFamily: "'DM Mono', monospace", color: "#9CA3AF", letterSpacing: "0.1em", marginBottom: "6px", textTransform: "uppercase" }}>Google Calendar OAuth Token <span style={{ color: "#4B5563" }}>(optional)</span></label>
-                <input value={gcalToken} onChange={e => setGcalToken(e.target.value)} type="password" style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px", padding: "10px 14px", color: "#E5E7EB", fontSize: "0.85rem", fontFamily: "'DM Mono', monospace" }} placeholder="ya29.a0A..." />
+                <input value={gcalToken} onChange={e => { setGcalToken(e.target.value); setGcalTokenTime(Date.now()); }} type="password" style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px", padding: "10px 14px", color: "#E5E7EB", fontSize: "0.85rem", fontFamily: "'DM Mono', monospace" }} placeholder="ya29.a0A..." />
                 <p style={{ fontSize: "0.72rem", color: "#4B5563", marginTop: "6px", lineHeight: 1.5 }}>Get at <a href="https://developers.google.com/oauthplayground" target="_blank" rel="noreferrer" style={{ color: "#7986CB" }}>OAuth Playground</a> — expires ~1hr</p>
               </div>
               <div style={{ marginBottom: "2rem" }}>
@@ -809,8 +812,29 @@ export default function FamilyScheduler() {
                 <div>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
                     <span style={{ fontFamily: "'Playfair Display', serif", fontSize: "0.92rem", color: "#F3F4F6", fontStyle: "italic" }}>My Calendar</span>
-                    <span style={{ fontSize: "0.56rem", fontFamily: "'DM Mono', monospace", color: "#4B5563" }}>Click event to tag · +N to expand all</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "0.56rem", fontFamily: "'DM Mono', monospace", color: "#4B5563" }}>Click event to tag · +N to expand all</span>
+                      <button onClick={loadGoogleCalendar} disabled={calLoading} style={{ padding: "3px 8px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "5px", color: calLoading ? "#4B5563" : "#9CA3AF", fontFamily: "'DM Mono', monospace", fontSize: "0.58rem", cursor: calLoading ? "default" : "pointer" }}>
+                        {calLoading ? "↻ loading…" : "↻ refresh"}
+                      </button>
+                    </div>
                   </div>
+                  {gcalToken && gcalTokenTime && (() => {
+                    const age = Date.now() - gcalTokenTime;
+                    const expired = age > 60 * 60 * 1000;
+                    const warning = age > 50 * 60 * 1000;
+                    if (!expired && !warning) return null;
+                    return (
+                      <div style={{ marginBottom: "8px", padding: "6px 10px", background: expired ? "rgba(239,68,68,0.08)" : "rgba(246,191,38,0.08)", border: `1px solid ${expired ? "rgba(239,68,68,0.25)" : "rgba(246,191,38,0.25)"}`, borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <span style={{ fontSize: "0.62rem", fontFamily: "'DM Mono', monospace", color: expired ? "#F87171" : "#F6BF26" }}>
+                          {expired ? "⚠ Token expired — refresh won't load new data" : "⚠ Token expiring soon (~10 min left)"}
+                        </span>
+                        <button onClick={() => setView("setup")} style={{ padding: "2px 8px", background: "transparent", border: `1px solid ${expired ? "rgba(239,68,68,0.4)" : "rgba(246,191,38,0.4)"}`, borderRadius: "4px", color: expired ? "#F87171" : "#F6BF26", fontFamily: "'DM Mono', monospace", fontSize: "0.58rem", cursor: "pointer" }}>
+                          Update token →
+                        </button>
+                      </div>
+                    );
+                  })()}
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px" }}>
                     {[{ l: partnerAName, c: "#7986CB" }, { l: partnerBName, c: "#33B679" }, { l: "Both", c: "#8E24AA" }, { l: "Kids", c: "#E67C73" }, { l: "Coverage", c: "#F6BF26" }].map(t => (
                       <div key={t.l} style={{ display: "flex", alignItems: "center", gap: "3px" }}>
