@@ -37,11 +37,10 @@ const TAG_OPTIONS = [
   { id: "nora", label: "Nora's", color: "#7986CB" },
   { id: "patrick", label: "Patrick's", color: "#33B679" },
   { id: "both", label: "Both", color: "#8E24AA" },
-  { id: "kids-nora", label: "Kids → Nora covers", color: "#E67C73" },
+  { id: "kids-nora", label: "Kids → Nora covers", color: "#7986CB" },
   { id: "kids-patrick", label: "Kids → Patrick covers", color: "#33B679" },
-  { id: "kids-both", label: "Kids → Split", color: "#E67C73" },
-  { id: "coverage-nora", label: "Needs coverage → Nora", color: "#F6BF26" },
-  { id: "coverage-patrick", label: "Needs coverage → Patrick", color: "#F6BF26" },
+  { id: "kids-both", label: "Kids → Both", color: "#8E24AA" },
+  { id: "coverage", label: "Needs coverage", color: "#F6BF26" },
   { id: "ignore", label: "Ignore", color: "#6B7280" },
 ];
 
