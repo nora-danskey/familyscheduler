@@ -136,9 +136,6 @@ FIXED DAILY ANCHORS:
 
 EVENT TAGS: ${tagLines || "None yet."}
 CALENDAR DATA sent with each message.`;
-
-For GCal push:
-<GCAL_EVENTS>[{"summary":"...","start":{"dateTime":"...","timeZone":"America/New_York"},"end":{"dateTime":"...","timeZone":"America/New_York"},"colorId":"..."}]</GCAL_EVENTS>`;
 }
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
