@@ -270,27 +270,26 @@ function ScheduleGrid({ scheduleDays, onDayClick, selectedDay, partnerAName, par
           {padded.map((day, i) => {
             if (!day) return <div key={i} style={{ background: "rgba(255,255,255,0.01)", borderRadius: "6px", minHeight: "70px", border: "1px dashed rgba(255,255,255,0.04)" }} />;
             const isSelected = selectedDay === day.date;
-            const topBlocks = day.blocks.slice(0, 4);
             return (
               <div key={day.date} onClick={() => onDayClick(day.date)} style={{
                 background: isSelected ? "rgba(249,220,92,0.08)" : "rgba(255,255,255,0.03)",
                 border: isSelected ? "1px solid rgba(249,220,92,0.35)" : "1px solid rgba(255,255,255,0.07)",
-                borderRadius: "6px", padding: "6px 5px", minHeight: "70px", cursor: "pointer",
+                borderRadius: "6px", padding: "6px 5px", minHeight: "140px", cursor: "pointer",
               }}>
-                <div style={{ fontSize: "0.58rem", fontFamily: "'DM Mono', monospace", color: isSelected ? "#F9DC5C" : "#6B7280", marginBottom: "4px" }}>
+                <div style={{ fontSize: "0.58rem", fontFamily: "'DM Mono', monospace", color: isSelected ? "#F9DC5C" : "#6B7280", marginBottom: "5px" }}>
                   {day.label.split(" ")[0].toUpperCase()}<br />
                   <span style={{ fontSize: "0.85rem", fontFamily: "'Playfair Display', serif", color: isSelected ? "#F9DC5C" : "#E5E7EB" }}>{new Date(day.date + "T12:00:00").getDate()}</span>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                  {topBlocks.map((b, j) => {
+                <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                  {day.blocks.map((b, j) => {
                     const bc = blockColorDot(b.who, partnerAName, partnerBName);
                     return (
-                      <div key={j} style={{ fontSize: "0.52rem", color: bc, fontFamily: "'DM Mono', monospace", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", borderLeft: `2px solid ${bc}30`, paddingLeft: "3px" }}>
-                        {b.title}
+                      <div key={j} style={{ fontSize: "0.52rem", color: bc, fontFamily: "'DM Mono', monospace", borderLeft: `2px solid ${bc}40`, paddingLeft: "3px" }}>
+                        <div style={{ opacity: 0.55, fontSize: "0.48rem" }}>{b.start}</div>
+                        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.title}</div>
                       </div>
                     );
                   })}
-                  {day.blocks.length > 4 && <div style={{ fontSize: "0.48rem", color: "#4B5563" }}>+{day.blocks.length - 4} more</div>}
                 </div>
               </div>
             );
@@ -362,58 +361,43 @@ function WeeklyTotals({ summary, partnerAName, partnerBName }) {
 // ─── GCAL STRIP ───────────────────────────────────────────────────────────────
 function GCalStrip({ events, startDate, eventLabels, onEventClick }) {
   const days = getWeekDays(startDate);
-  const [expandedDay, setExpandedDay] = useState(null);
 
   function DayCell({ day }) {
-    const dayStr = day.toISOString().split("T")[0];
+    const dayStr = `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,"0")}-${String(day.getDate()).padStart(2,"0")}`;
     const dayEvents = getEventsForDay(events, day);
     const isToday = day.toDateString() === new Date().toDateString();
-    const isExpanded = expandedDay === dayStr;
+
+    function fmtTime(dt) {
+      if (!dt) return "";
+      const d = new Date(dt);
+      return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+    }
 
     return (
-      <div style={{ position: "relative" }}>
-        <div style={{
-          background: isToday ? "rgba(249,220,92,0.05)" : "rgba(255,255,255,0.03)",
-          border: isToday ? "1px solid rgba(249,220,92,0.2)" : "1px solid rgba(255,255,255,0.06)",
-          borderRadius: "8px", padding: "6px 5px", minHeight: "72px",
-        }}>
-          <div style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: isToday ? "#F9DC5C" : "#6B7280", marginBottom: "3px" }}>
-            {day.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()}<br />
-            <span style={{ fontSize: "0.9rem", fontFamily: "'Playfair Display', serif", color: isToday ? "#F9DC5C" : "#E5E7EB" }}>{day.getDate()}</span>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-            {dayEvents.slice(0, 2).map((ev, j) => {
-              const tc = tagColor(eventLabels[ev.id]);
-              return (
-                <div key={j} onClick={e => { e.stopPropagation(); onEventClick(ev); }}
-                  style={{ fontSize: "0.55rem", background: tc + "18", borderLeft: `2px solid ${tc}`, color: tc, borderRadius: "2px", padding: "1px 3px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", cursor: "pointer" }}
-                  title={ev.summary}>{ev.summary}
-                </div>
-              );
-            })}
-            {dayEvents.length > 2 && (
-              <div onClick={e => { e.stopPropagation(); setExpandedDay(isExpanded ? null : dayStr); }}
-                style={{ fontSize: "0.52rem", color: "#F9DC5C", cursor: "pointer", fontFamily: "'DM Mono', monospace" }}>
-                +{dayEvents.length - 2} more ▾
-              </div>
-            )}
-          </div>
+      <div style={{
+        background: isToday ? "rgba(249,220,92,0.05)" : "rgba(255,255,255,0.03)",
+        border: isToday ? "1px solid rgba(249,220,92,0.2)" : "1px solid rgba(255,255,255,0.06)",
+        borderRadius: "8px", padding: "6px 5px", minHeight: "140px",
+      }}>
+        <div style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: isToday ? "#F9DC5C" : "#6B7280", marginBottom: "5px" }}>
+          {day.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()}<br />
+          <span style={{ fontSize: "0.9rem", fontFamily: "'Playfair Display', serif", color: isToday ? "#F9DC5C" : "#E5E7EB" }}>{day.getDate()}</span>
         </div>
-        {isExpanded && (
-          <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 50, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "8px", padding: "8px", minWidth: "160px", marginTop: "4px", boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
-            <div style={{ fontSize: "0.6rem", fontFamily: "'DM Mono', monospace", color: "#6B7280", marginBottom: "5px" }}>{day.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}</div>
-            {dayEvents.map((ev, j) => {
-              const tc = tagColor(eventLabels[ev.id]);
-              return (
-                <div key={j} onClick={e => { e.stopPropagation(); onEventClick(ev); setExpandedDay(null); }}
-                  style={{ fontSize: "0.65rem", background: tc + "15", borderLeft: `2px solid ${tc}`, color: tc, borderRadius: "3px", padding: "4px 6px", marginBottom: "3px", cursor: "pointer", fontFamily: "'DM Mono', monospace" }}>
-                  {ev.summary}
-                  {eventLabels[ev.id] && <span style={{ opacity: 0.55, marginLeft: "4px" }}>· {eventLabels[ev.id]}</span>}
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+          {dayEvents.map((ev, j) => {
+            const tc = tagColor(eventLabels[ev.id]);
+            const time = ev.start?.dateTime ? fmtTime(ev.start.dateTime) : "";
+            return (
+              <div key={j} onClick={e => { e.stopPropagation(); onEventClick(ev); }}
+                style={{ fontSize: "0.55rem", background: tc + "18", borderLeft: `2px solid ${tc}`, color: tc, borderRadius: "2px", padding: "2px 3px", cursor: "pointer" }}
+                title={ev.summary}>
+                {time && <div style={{ opacity: 0.65, fontSize: "0.5rem" }}>{time}</div>}
+                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ev.summary}</div>
+              </div>
+            );
+          })}
+          {dayEvents.length === 0 && <div style={{ fontSize: "0.5rem", color: "#374151", fontFamily: "'DM Mono', monospace" }}>—</div>}
+        </div>
       </div>
     );
   }
@@ -430,7 +414,7 @@ function GCalStrip({ events, startDate, eventLabels, onEventClick }) {
   }
 
   return (
-    <div onClick={() => setExpandedDay(null)}>
+    <div>
       <WeekRow weekDays={days.slice(0, 7)} label="Week 1" />
       <WeekRow weekDays={days.slice(7, 14)} label="Week 2" />
     </div>
@@ -649,7 +633,7 @@ export default function FamilyScheduler() {
       const res = await fetch("/api/chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001", max_tokens: 2000,
+          model: "claude-haiku-4-5-20251001", max_tokens: 4000,
           system: buildSystemPrompt(partnerAName, partnerBName, events, eventLabels, rules),
           messages: apiMsgs,
         }),
