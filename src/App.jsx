@@ -659,7 +659,7 @@ export default function FamilyScheduler() {
       const res = await fetch("/.netlify/functions/chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-6", max_tokens: 2000,
+          model: "claude-sonnet-4-6", max_tokens: 3500,
           system: buildSystemPrompt(partnerAName, partnerBName, events, eventLabels, rules),
           messages: newMsgs.map(m => ({ role: m.role, content: m.content })),
         }),
@@ -673,7 +673,9 @@ export default function FamilyScheduler() {
       const raw = data.content?.[0]?.text || "Something went wrong.";
 
       // Parse SCHEDULE
+      console.log("AI raw response:", raw);
       const schedMatch = raw.match(/<SCHEDULE>([\s\S]*?)<\/SCHEDULE>/);
+      console.log("Schedule match:", schedMatch ? schedMatch[1].trim().slice(0, 200) : "none");
       if (schedMatch) {
         try {
           const parsed = JSON.parse(schedMatch[1].trim());
@@ -684,7 +686,7 @@ export default function FamilyScheduler() {
             return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
           });
           if (parsed.length > 0) { setSelectedDay(parsed[0].date); setActiveTab("schedule-2wk"); }
-        } catch (e) { console.error("Schedule parse error:", e); }
+        } catch (e) { console.error("Schedule parse error:", e, schedMatch[1].trim().slice(0, 500)); }
       }
 
       // Parse SUMMARY
