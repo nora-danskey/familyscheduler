@@ -57,6 +57,44 @@ const BLOCK_COLORS = {
   split:    { bg: "#E67C7318", border: "#E67C73", text: "#FCA5A5" },
 };
 
+// ─── SCHEDULE PARSING HELPERS ─────────────────────────────────────────────────
+function parseScheduleRobust(text) {
+  const startIdx = text.indexOf("<SCHEDULE>");
+  if (startIdx === -1) return null;
+  const inner = text.slice(startIdx + "<SCHEDULE>".length);
+  const endIdx = inner.indexOf("</SCHEDULE>");
+  if (endIdx !== -1) {
+    try { return JSON.parse(inner.slice(0, endIdx).trim()); } catch {}
+  }
+  // Fallback: brace-count to extract complete day objects from truncated JSON
+  const days = [];
+  let depth = 0, start = -1;
+  for (let i = 0; i < inner.length; i++) {
+    if (inner[i] === "{") { if (depth === 0) start = i; depth++; }
+    else if (inner[i] === "}") {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        try { const obj = JSON.parse(inner.slice(start, i + 1)); if (obj.date) days.push(obj); } catch {}
+        start = -1;
+      }
+    }
+  }
+  return days.length > 0 ? days : null;
+}
+
+function normalizeBlocks(days) {
+  return days.map(day => ({
+    ...day,
+    blocks: (day.blocks || []).map(b => ({
+      start: b.start || b.s || "",
+      end: b.end || b.e || "",
+      title: b.title || b.t || "",
+      who: b.who || b.w || "",
+      note: b.note || b.n || "",
+    }))
+  }));
+}
+
 // ─── SYSTEM PROMPT ────────────────────────────────────────────────────────────
 function buildSystemPrompt(a, b, events, labels, rules) {
   const tagLines = Object.entries(labels).map(([id, tag]) => {
@@ -592,7 +630,9 @@ export default function FamilyScheduler() {
       return ev ? `"${ev.summary}" → ${tag}` : null;
     }).filter(Boolean).join("\n");
 
-    const userMsg = { role: "user", content: `CALENDAR DATA:\n${calData}\n\nEVENT TAGS:\n${tagLines || "None"}\n\nUSER: ${text}` };
+    const isScheduleReq = /schedule|suggest|two.?week|2.week/i.test(text);
+    const fmtReminder = isScheduleReq ? "\n\n[OUTPUT FORMAT REQUIRED: <SCHEDULE>[{\"date\":\"YYYY-MM-DD\",\"label\":\"Mon Feb 24\",\"blocks\":[{\"s\":\"HH:MM\",\"e\":\"HH:MM\",\"t\":\"title\",\"w\":\"who\"}]}]</SCHEDULE> then <SUMMARY>{\"week1\":{\"nora\":{\"workHours\":0,\"parentingHours\":0,\"exerciseHours\":0,\"freeHours\":0},\"patrick\":{...},\"notes\":\"\"},\"week2\":{...}}</SUMMARY> then max 2 plain sentences. Output SCHEDULE tag FIRST. No text before it. Include all 14 days.]" : "";
+    const userMsg = { role: "user", content: `CALENDAR DATA:\n${calData}\n\nEVENT TAGS:\n${tagLines || "None"}\n\nUSER: ${text}${fmtReminder}` };
     const newMsgs = [...messages, userMsg];
     setMessages(newMsgs);
     setInput("");
@@ -634,48 +674,6 @@ export default function FamilyScheduler() {
       }
       const raw = data.content?.[0]?.text || "Something went wrong.";
 
-      // Extract complete day objects from JSON even if truncated
-      function parseScheduleRobust(text) {
-        const startIdx = text.indexOf("<SCHEDULE>");
-        if (startIdx === -1) return null;
-        const inner = text.slice(startIdx + "<SCHEDULE>".length);
-        // Try full parse first
-        const endIdx = inner.indexOf("</SCHEDULE>");
-        if (endIdx !== -1) {
-          try { return JSON.parse(inner.slice(0, endIdx).trim()); } catch {}
-        }
-        // Fallback: extract complete top-level objects using brace counting
-        const days = [];
-        let depth = 0, start = -1;
-        for (let i = 0; i < inner.length; i++) {
-          if (inner[i] === "{") { if (depth === 0) start = i; depth++; }
-          else if (inner[i] === "}") {
-            depth--;
-            if (depth === 0 && start !== -1) {
-              try {
-                const obj = JSON.parse(inner.slice(start, i + 1));
-                if (obj.date) days.push(obj);
-              } catch {}
-              start = -1;
-            }
-          }
-        }
-        return days.length > 0 ? days : null;
-      }
-
-      function normalizeBlocks(days) {
-        return days.map(day => ({
-          ...day,
-          blocks: (day.blocks || []).map(b => ({
-            start: b.start || b.s || "",
-            end: b.end || b.e || "",
-            title: b.title || b.t || "",
-            who: b.who || b.w || "",
-            note: b.note || b.n || "",
-          }))
-        }));
-      }
-
       const parsed = parseScheduleRobust(raw);
       if (parsed && parsed.length > 0) {
         const normalized = normalizeBlocks(parsed);
@@ -700,9 +698,8 @@ export default function FamilyScheduler() {
       let gcalEvents = null;
       if (gcalMatch) { try { gcalEvents = JSON.parse(gcalMatch[1].trim()); setPendingGcalEvents(gcalEvents); } catch {} }
 
-      // Show only text before <SCHEDULE> (strips raw JSON from chat)
-      const displayText = raw
-        .replace(/<SCHEDULE>[\s\S]*/s, "")
+      // Show only text before <SCHEDULE> — simple split avoids any regex edge cases
+      const displayText = raw.split("<SCHEDULE>")[0]
         .replace(/<SUMMARY>[\s\S]*?<\/SUMMARY>/g, "")
         .replace(/<GCAL_EVENTS>[\s\S]*?<\/GCAL_EVENTS>/g, "")
         .trim();
