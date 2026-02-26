@@ -654,9 +654,18 @@ export default function FamilyScheduler() {
           messages: apiMsgs,
         }),
       });
-      const data = await res.json();
+      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        const bodyText = await res.text().catch(() => "(unreadable)");
+        console.error("Non-JSON response:", res.status, bodyText.slice(0, 500));
+        setMessages(prev => [...prev, { role: "assistant", content: `Error ${res.status} — check console for details.` }]);
+        setLoading(false); return;
+      }
       if (!res.ok) {
         const errMsg = data?.details?.error?.message || data?.error || `Error ${res.status}`;
+        console.error("API error:", data);
         setMessages(prev => [...prev, { role: "assistant", content: `Something went wrong: ${errMsg}` }]);
         setLoading(false); return;
       }
@@ -696,8 +705,9 @@ export default function FamilyScheduler() {
         .replace(/<GCAL_EVENTS>[\s\S]*?<\/GCAL_EVENTS>/g, "")
         .trim();
       setMessages(prev => [...prev, { role: "assistant", content: displayText, gcalEvents }]);
-    } catch {
-      setMessages(prev => [...prev, { role: "assistant", content: "Something went wrong — please try again." }]);
+    } catch (e) {
+      console.error("sendMessage error:", e);
+      setMessages(prev => [...prev, { role: "assistant", content: `Something went wrong: ${e.message}` }]);
     }
     setLoading(false);
   }
