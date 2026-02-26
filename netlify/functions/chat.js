@@ -1,3 +1,5 @@
+const https = require("https");
+
 export const handler = async (event) => {
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: JSON.stringify({ error: "Method not allowed" }) };
@@ -8,26 +10,45 @@ export const handler = async (event) => {
     return { statusCode: 500, body: JSON.stringify({ error: "ANTHROPIC_API_KEY not set" }) };
   }
 
-  try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const body = event.isBase64Encoded
+    ? Buffer.from(event.body, "base64").toString("utf8")
+    : event.body;
+
+  return new Promise((resolve) => {
+    const options = {
+      hostname: "api.anthropic.com",
+      path: "/v1/messages",
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
+        "Content-Length": Buffer.byteLength(body),
       },
-      body: event.body,
+    };
+
+    const req = https.request(options, (res) => {
+      let data = "";
+      res.on("data", (chunk) => { data += chunk; });
+      res.on("end", () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (res.statusCode !== 200) {
+            resolve({ statusCode: res.statusCode, body: JSON.stringify({ error: "Anthropic error", details: parsed }) });
+          } else {
+            resolve({ statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify(parsed) });
+          }
+        } catch (e) {
+          resolve({ statusCode: 500, body: JSON.stringify({ error: "Bad JSON from Anthropic", raw: data.slice(0, 200) }) });
+        }
+      });
     });
-    const text = await response.text();
-    let data;
-    try { data = JSON.parse(text); } catch (e) {
-      return { statusCode: 500, body: JSON.stringify({ error: "Bad response from Anthropic", raw: text.slice(0, 200) }) };
-    }
-    if (!response.ok) {
-      return { statusCode: response.status, body: JSON.stringify({ error: "Anthropic error", details: data }) };
-    }
-    return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) };
-  } catch (e) {
-    return { statusCode: 500, body: JSON.stringify({ error: e.message }) };
-  }
+
+    req.on("error", (e) => {
+      resolve({ statusCode: 500, body: JSON.stringify({ error: e.message }) });
+    });
+
+    req.write(body);
+    req.end();
+  });
 };
