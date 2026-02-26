@@ -115,8 +115,9 @@ Always include a <SUMMARY> block with calculated totals for each person each wee
 </SUMMARY>
 
 ─── SCHEDULE FORMAT ───
-Always include <SCHEDULE> when suggesting schedules. Show BOTH weeks when possible.
-Format: <SCHEDULE>[{"date":"YYYY-MM-DD","label":"Mon Feb 24","blocks":[{"start":"HH:MM","end":"HH:MM","title":"...","who":"...","note":"..."}]}]</SCHEDULE>
+When suggesting schedules: output <SCHEDULE> FIRST, then <SUMMARY>, then 2-3 sentences of plain text (no markdown, no headers).
+Use compact block format. Labels must be "Day Date" only (e.g. "Mon Feb 24"). Omit notes from blocks.
+<SCHEDULE>[{"date":"YYYY-MM-DD","label":"Mon Feb 24","blocks":[{"s":"HH:MM","e":"HH:MM","t":"title","w":"who"}]}]</SCHEDULE>
 WHO values: "family", "nora", "patrick", "work", "exercise", "kids", "chores", "free", "split", "alternate"
 Include ALL 14 days. Show both people's blocks on same day.
 
@@ -662,10 +663,20 @@ export default function FamilyScheduler() {
       if (schedMatch) {
         try {
           const parsed = JSON.parse(schedMatch[1].trim());
+          const normalized = parsed.map(day => ({
+            ...day,
+            blocks: (day.blocks || []).map(b => ({
+              start: b.start || b.s || "",
+              end: b.end || b.e || "",
+              title: b.title || b.t || "",
+              who: b.who || b.w || "",
+              note: b.note || b.n || "",
+            }))
+          }));
           setScheduleDays(prev => {
             const map = {};
             prev.forEach(d => map[d.date] = d);
-            parsed.forEach(d => map[d.date] = d);
+            normalized.forEach(d => map[d.date] = d);
             return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
           });
           if (parsed.length > 0) { setSelectedDay(parsed[0].date); setActiveTab("schedule-2wk"); }
