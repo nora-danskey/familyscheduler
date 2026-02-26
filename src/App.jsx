@@ -116,29 +116,9 @@ Always include a <SUMMARY> block with calculated totals for each person each wee
 
 ─── SCHEDULE FORMAT ───
 Always include <SCHEDULE> when suggesting schedules. Show BOTH weeks when possible.
-<SCHEDULE>
-[
-  {
-    "date": "YYYY-MM-DD",
-    "label": "Mon Feb 24",
-    "blocks": [
-      { "start": "07:00", "end": "08:20", "title": "Morning", "who": "family", "note": "preferred together" },
-      { "start": "08:20", "end": "09:00", "title": "Drop-off", "who": "nora", "note": "" },
-      { "start": "06:00", "end": "07:00", "title": "Exercise", "who": "patrick", "note": "" },
-      { "start": "09:00", "end": "14:00", "title": "Work", "who": "patrick", "note": "5h" },
-      { "start": "09:00", "end": "17:00", "title": "Work", "who": "nora", "note": "8h" },
-      { "start": "14:00", "end": "16:20", "title": "Work", "who": "patrick", "note": "then picks up" },
-      { "start": "16:20", "end": "17:00", "title": "Pickup", "who": "patrick", "note": "" },
-      { "start": "17:00", "end": "19:00", "title": "Work", "who": "nora", "note": "2h while Patrick with kids" },
-      { "start": "19:00", "end": "19:30", "title": "Dinner together", "who": "family", "note": "" },
-      { "start": "19:30", "end": "20:30", "title": "Bedtime", "who": "split", "note": "" },
-      { "start": "20:30", "end": "22:00", "title": "Work", "who": "patrick", "note": "1.5h evening" }
-    ]
-  }
-]
-</SCHEDULE>
+Format: <SCHEDULE>[{"date":"YYYY-MM-DD","label":"Mon Feb 24","blocks":[{"start":"HH:MM","end":"HH:MM","title":"...","who":"...","note":"..."}]}]</SCHEDULE>
 WHO values: "family", "nora", "patrick", "work", "exercise", "kids", "chores", "free", "split", "alternate"
-Include ALL 14 days when doing a full two-week schedule. Show both people's blocks on same day.
+Include ALL 14 days. Show both people's blocks on same day.
 
 For GCal push:
 <GCAL_EVENTS>[{"summary":"...","start":{"dateTime":"...","timeZone":"America/New_York"},"end":{"dateTime":"...","timeZone":"America/New_York"},"colorId":"..."}]</GCAL_EVENTS>`;
