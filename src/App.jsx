@@ -153,7 +153,47 @@ function getEventsForDay(events, day) {
     return ev.start?.dateTime?.split("T")[0] === dayStr;
   });
 }
-function timeToMin(t) { const [h, m] = t.split(":").map(Number); return h * 60 + m; }
+function timeToMin(t) { const [h, m] = (t || "0:00").split(":").map(Number); return h * 60 + m; }
+function computeSummaryFromBlocks(days) {
+  const empty = () => ({ workHours: 0, parentingHours: 0, exerciseHours: 0, freeHours: 0 });
+  const noras = [empty(), empty()];
+  const patricks = [empty(), empty()];
+  days.forEach((day, di) => {
+    const wi = di < 7 ? 0 : 1;
+    for (const b of (day.blocks || [])) {
+      const dur = (timeToMin(b.end) - timeToMin(b.start)) / 60;
+      if (dur <= 0) continue;
+      const who = (b.who || "").toLowerCase();
+      const t = (b.title || "").toLowerCase();
+      const isWork = /work/.test(t);
+      const isExercise = /exercise|gym|run|workout|swim/.test(t);
+      const isParenting = /morning|breakfast|drop|pick.?up|bedtime|dinner|kid/.test(t);
+      const addTo = (bucket, hrs) => {
+        if (isWork) bucket.workHours += hrs;
+        else if (isExercise) bucket.exerciseHours += hrs;
+        else if (isParenting) bucket.parentingHours += hrs;
+        else bucket.freeHours += hrs;
+      };
+      if (who === "nora") addTo(noras[wi], dur);
+      else if (who === "patrick") addTo(patricks[wi], dur);
+      else if (who === "work") {
+        if (/nora/.test(t)) addTo(noras[wi], dur);
+        else if (/patrick/.test(t)) addTo(patricks[wi], dur);
+        else { addTo(noras[wi], dur / 2); addTo(patricks[wi], dur / 2); }
+      }
+      else if (who === "exercise") { noras[wi].exerciseHours += dur; patricks[wi].exerciseHours += dur; }
+      else if (who === "free") { noras[wi].freeHours += dur; patricks[wi].freeHours += dur; }
+      else if (["family", "kids", "split", "alternate"].includes(who)) {
+        noras[wi].parentingHours += dur; patricks[wi].parentingHours += dur;
+      }
+    }
+  });
+  const round = obj => Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, Math.round(v * 10) / 10]));
+  return {
+    week1: { nora: round(noras[0]), patrick: round(patricks[0]), notes: "computed from schedule" },
+    week2: { nora: round(noras[1]), patrick: round(patricks[1]), notes: "computed from schedule" },
+  };
+}
 function minToTime(m) {
   const h = Math.floor(m / 60); const min = m % 60;
   const ampm = h >= 12 ? "pm" : "am"; const h12 = h % 12 || 12;
@@ -681,8 +721,9 @@ export default function FamilyScheduler() {
       }
       const raw = data.content?.[0]?.text || "Something went wrong.";
       const parsed = parseScheduleRobust(raw);
+      let normalized = null;
       if (parsed && parsed.length > 0) {
-        const normalized = normalizeBlocks(parsed);
+        normalized = normalizeBlocks(parsed);
         setScheduleDays(prev => {
           const map = {};
           prev.forEach(d => map[d.date] = d);
@@ -693,10 +734,18 @@ export default function FamilyScheduler() {
         setActiveTab("schedule-2wk");
       }
 
-      // Parse SUMMARY
+      // Parse SUMMARY — strip markdown code fences if present, fall back to computing from blocks
       const sumMatch = raw.match(/<SUMMARY>([\s\S]*?)<\/SUMMARY>/);
       if (sumMatch) {
-        try { setSummary(JSON.parse(sumMatch[1].trim())); } catch {}
+        const sumStr = sumMatch[1].trim().replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
+        try {
+          setSummary(JSON.parse(sumStr));
+        } catch (e) {
+          console.log("SUMMARY parse failed:", e.message, sumStr.slice(0, 300));
+          if (normalized) setSummary(computeSummaryFromBlocks(normalized));
+        }
+      } else if (normalized) {
+        setSummary(computeSummaryFromBlocks(normalized));
       }
 
       // Parse GCAL
