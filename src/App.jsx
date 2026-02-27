@@ -18,8 +18,9 @@ const DEMO_EVENTS = [
 const DEFAULT_RULES = [
   { id: "r1", name: "Morning / breakfast", startTime: "07:00", endTime: "08:20", who: "family", days: ["mon","tue","wed","thu","fri"], note: "Preferred together as a family; alternate if one parent is traveling or needs morning hours for work" },
   { id: "r2", name: "School drop-off", startTime: "08:20", endTime: "09:00", who: "alternate", days: ["mon","tue","wed","thu","fri"], note: "Alternate by default" },
-  { id: "r3", name: "School pickup", startTime: "16:20", endTime: "17:00", who: "alternate", days: ["mon","tue","wed","thu","fri"], note: "" },
-  { id: "r4", name: "Dinner together", startTime: "19:00", endTime: "19:30", who: "family", days: ["mon","tue","wed","thu","fri","sat","sun"], note: "Always together" },
+  { id: "r3", name: "School pickup", startTime: "16:15", endTime: "17:30", who: "alternate", days: ["mon","tue","wed","thu","fri"], note: "" },
+  { id: "r7", name: "Afternoon play", startTime: "17:30", endTime: "18:30", who: "family", days: ["mon","tue","wed","thu","fri"], note: "At least one parent; preferred together" },
+  { id: "r4", name: "Dinner together", startTime: "18:30", endTime: "19:30", who: "family", days: ["mon","tue","wed","thu","fri","sat","sun"], note: "Always together" },
   { id: "r5", name: "Bedtime routine", startTime: "19:30", endTime: "20:30", who: "split", days: ["mon","tue","wed","thu","fri","sat","sun"], note: "Preferred split, solo is fine when needed" },
   { id: "r6", name: "Exercise", startTime: "06:00", endTime: "07:00", who: "each", days: ["mon","tue","wed","thu","fri","sat","sun"], note: "1 hour each, daily, any time during waking hours — schedule flexibly around other commitments" },
 ];
@@ -123,7 +124,7 @@ ${ruleLines}
 WORK HOURS RULES:
 - Each parent needs exactly 45 hours/week of work
 - Work can happen 6am–10pm, but ONLY when the other parent is with the kids during kid-coverage windows
-- Kid coverage windows: 7:00am–9:00am (morning) and 4:20pm–10:00pm (evening/night)
+- Kid coverage windows: 7:00am–9:00am (morning) and 4:15pm–8:30pm (afternoon/evening through bedtime)
 - Dinner together 7:00–7:30pm is sacred — neither parent works then
 - Bedtime 7:30–8:30pm: both parents engaged with kids (split or one solo)
 - Work travel days: assume traveling parent works 9 hours that day
@@ -131,8 +132,9 @@ WORK HOURS RULES:
 
 FIXED DAILY ANCHORS:
 - Morning/breakfast: 7:00–8:20am (preferred together; alternate if one parent traveling or needs morning work hours)
-- Drop-off: 8:20–9:00am · Pickup: 4:20–5:00pm
-- Dinner together: 7:00–7:30pm (always, no exceptions)
+- Drop-off: 8:20–9:00am · Pickup: 4:15–5:30pm (weekdays)
+- Afternoon play: 5:30–6:30pm (weekdays, at least one parent present)
+- Dinner together: 6:30–7:30pm (always, no exceptions)
 - Bedtime: 7:30–8:30pm (preferred split, one solo OK)
 - Exercise: 1 hour each, daily, any time during waking hours
 
@@ -167,7 +169,7 @@ function computeSummaryFromBlocks(days) {
       const t = (b.title || "").toLowerCase();
       const isWork = /work/.test(t);
       const isExercise = /exercise|gym|run|workout|swim/.test(t);
-      const isParenting = /morning|breakfast|drop|pick.?up|bedtime|dinner|kid/.test(t);
+      const isParenting = /morning|breakfast|drop|pick.?up|bedtime|dinner|kid|play/.test(t);
       const addTo = (bucket, hrs) => {
         if (isWork) bucket.workHours += hrs;
         else if (isExercise) bucket.exerciseHours += hrs;
@@ -571,7 +573,7 @@ function RulesEditor({ rules, setRules, onClose }) {
 // ─── MESSAGE ──────────────────────────────────────────────────────────────────
 function Message({ msg }) {
   const isUser = msg.role === "user";
-  const display = isUser ? msg.content.replace(/^CALENDAR DATA:[\s\S]*?USER:\s*/m, "") : msg.content;
+  const display = isUser ? (msg.displayContent ?? msg.content.replace(/^CALENDAR DATA:[\s\S]*?USER:\s*/m, "")) : msg.content;
   return (
     <div style={{ display: "flex", justifyContent: isUser ? "flex-end" : "flex-start", marginBottom: "10px" }}>
       {!isUser && <div style={{ width: "22px", height: "22px", borderRadius: "50%", background: "linear-gradient(135deg, #F9DC5C, #F4844C)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.58rem", flexShrink: 0, marginRight: "6px", marginTop: "2px" }}>✦</div>}
@@ -679,7 +681,7 @@ export default function FamilyScheduler() {
 
     const isScheduleReq = /schedule|suggest|two.?week|2.week/i.test(text);
     const fmtReminder = isScheduleReq ? "\n\n[OUTPUT FORMAT REQUIRED: <SUMMARY>{\"week1\":{\"nora\":{\"workHours\":0,\"parentingHours\":0,\"exerciseHours\":0,\"freeHours\":0},\"patrick\":{...},\"notes\":\"\"},\"week2\":{...}}</SUMMARY> then <SCHEDULE>[{\"date\":\"YYYY-MM-DD\",\"label\":\"Mon Feb 24\",\"blocks\":[{\"s\":\"HH:MM\",\"e\":\"HH:MM\",\"t\":\"title\",\"w\":\"who\"}]}]</SCHEDULE> then max 2 plain sentences. Output SUMMARY tag FIRST. No text before it. Include all 14 days. Honor travel periods — traveling parent cannot do any home duties.]" : "";
-    const userMsg = { role: "user", content: `CALENDAR DATA:\n${calData}\n\nEVENT TAGS:\n${tagLines || "None"}${travelSection}\n\nUSER: ${text}${fmtReminder}` };
+    const userMsg = { role: "user", content: `CALENDAR DATA:\n${calData}\n\nEVENT TAGS:\n${tagLines || "None"}${travelSection}\n\nUSER: ${text}${fmtReminder}`, displayContent: text };
     const newMsgs = [...messages, userMsg];
     setMessages(newMsgs);
     setInput("");
