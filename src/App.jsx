@@ -605,7 +605,7 @@ export default function FamilyScheduler() {
   const [eventLabels, setEventLabels] = useState(() => load("fs_labels", {}));
   const [rules, setRules] = useState(() => load("fs_rules", DEFAULT_RULES));
   const [scheduleDays, setScheduleDays] = useState(() => load("fs_schedule", []));
-  const [summary, setSummary] = useState(() => load("fs_summary", null));
+  const [summary, setSummary] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showRules, setShowRules] = useState(false);
@@ -631,7 +631,10 @@ export default function FamilyScheduler() {
   useEffect(() => { save("fs_cal_id", calendarId); }, [calendarId]);
   useEffect(() => { save("fs_rules", rules); }, [rules]);
   useEffect(() => { save("fs_schedule", scheduleDays); }, [scheduleDays]);
-  useEffect(() => { save("fs_summary", summary); }, [summary]);
+  // Always recompute summary from blocks so totals stay accurate regardless of AI output
+  useEffect(() => {
+    if (scheduleDays.length > 0) setSummary(computeSummaryFromBlocks(scheduleDays));
+  }, [scheduleDays]);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   async function loadGoogleCalendar() {
@@ -754,19 +757,8 @@ export default function FamilyScheduler() {
         setActiveTab("schedule-2wk");
       }
 
-      // Parse SUMMARY — strip markdown code fences if present, fall back to computing from blocks
-      const sumMatch = raw.match(/<SUMMARY>([\s\S]*?)<\/SUMMARY>/);
-      if (sumMatch) {
-        const sumStr = sumMatch[1].trim().replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
-        try {
-          setSummary(JSON.parse(sumStr));
-        } catch (e) {
-          console.log("SUMMARY parse failed:", e.message, sumStr.slice(0, 300));
-          if (normalized) setSummary(computeSummaryFromBlocks(normalized));
-        }
-      } else if (normalized) {
-        setSummary(computeSummaryFromBlocks(normalized));
-      }
+      // Always compute totals from schedule blocks — don't trust AI's SUMMARY numbers
+      if (normalized) setSummary(computeSummaryFromBlocks(normalized));
 
       // Parse GCAL
       const gcalMatch = raw.match(/<GCAL_EVENTS>([\s\S]*?)<\/GCAL_EVENTS>/);
