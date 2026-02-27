@@ -107,13 +107,15 @@ function buildSystemPrompt(a, b, events, labels, rules) {
   ).join("\n");
 
   return `CRITICAL OUTPUT RULES — follow exactly, no exceptions:
-1. When suggesting a schedule: output ONLY <SCHEDULE>...</SCHEDULE> then <SUMMARY>...</SUMMARY> then 2 plain sentences. NO text before <SCHEDULE>. NO markdown. NO headers.
+1. When suggesting a schedule: output ONLY <SUMMARY>...</SUMMARY> then <SCHEDULE>...</SCHEDULE> then 2 plain sentences. NO text before <SUMMARY>. NO markdown. NO headers.
 2. Use compact block keys: {"s":"HH:MM","e":"HH:MM","t":"title","w":"who"} — nothing else in each block.
 3. Labels must be "Day Date" only e.g. "Mon Feb 24" — no annotations.
 4. Include ALL 14 days in <SCHEDULE>. WHO values: "family","nora","patrick","work","exercise","kids","free","split","alternate"
 5. <SUMMARY> format: {"week1":{"nora":{"workHours":0,"parentingHours":0,"exerciseHours":0,"freeHours":0},"patrick":{...},"notes":"..."},"week2":{...}}
 
 You are a warm family scheduling assistant for ${a} and ${b}. Suggest practical rhythms, not micromanagement.
+
+ALL-DAY TRAVEL EVENTS: If a calendar event spans full day(s) and is tagged to one parent, that parent is physically away and CANNOT do any home duties (morning, drop-off, pickup, dinner, bedtime) on those days. The home parent covers all kid tasks solo.
 
 HOUSEHOLD RULES:
 ${ruleLines}
@@ -628,7 +630,7 @@ export default function FamilyScheduler() {
     }).filter(Boolean).join("\n");
 
     const isScheduleReq = /schedule|suggest|two.?week|2.week/i.test(text);
-    const fmtReminder = isScheduleReq ? "\n\n[OUTPUT FORMAT REQUIRED: <SCHEDULE>[{\"date\":\"YYYY-MM-DD\",\"label\":\"Mon Feb 24\",\"blocks\":[{\"s\":\"HH:MM\",\"e\":\"HH:MM\",\"t\":\"title\",\"w\":\"who\"}]}]</SCHEDULE> then <SUMMARY>{\"week1\":{\"nora\":{\"workHours\":0,\"parentingHours\":0,\"exerciseHours\":0,\"freeHours\":0},\"patrick\":{...},\"notes\":\"\"},\"week2\":{...}}</SUMMARY> then max 2 plain sentences. Output SCHEDULE tag FIRST. No text before it. Include all 14 days.]" : "";
+    const fmtReminder = isScheduleReq ? "\n\n[OUTPUT FORMAT REQUIRED: <SUMMARY>{\"week1\":{\"nora\":{\"workHours\":0,\"parentingHours\":0,\"exerciseHours\":0,\"freeHours\":0},\"patrick\":{...},\"notes\":\"\"},\"week2\":{...}}</SUMMARY> then <SCHEDULE>[{\"date\":\"YYYY-MM-DD\",\"label\":\"Mon Feb 24\",\"blocks\":[{\"s\":\"HH:MM\",\"e\":\"HH:MM\",\"t\":\"title\",\"w\":\"who\"}]}]</SCHEDULE> then max 2 plain sentences. Output SUMMARY tag FIRST. No text before it. Include all 14 days. Respect all-day events: a parent with an all-day travel event cannot do any home duties that day.]" : "";
     const userMsg = { role: "user", content: `CALENDAR DATA:\n${calData}\n\nEVENT TAGS:\n${tagLines || "None"}\n\nUSER: ${text}${fmtReminder}` };
     const newMsgs = [...messages, userMsg];
     setMessages(newMsgs);
@@ -670,9 +672,6 @@ export default function FamilyScheduler() {
         setLoading(false); return;
       }
       const raw = data.content?.[0]?.text || "Something went wrong.";
-      console.log("hasScheduleTag:", raw.includes("<SCHEDULE>"));
-      console.log("raw first 300:", raw.slice(0, 300));
-
       const parsed = parseScheduleRobust(raw);
       if (parsed && parsed.length > 0) {
         const normalized = normalizeBlocks(parsed);
@@ -697,8 +696,7 @@ export default function FamilyScheduler() {
       let gcalEvents = null;
       if (gcalMatch) { try { gcalEvents = JSON.parse(gcalMatch[1].trim()); setPendingGcalEvents(gcalEvents); } catch {} }
 
-      console.log("parsed days count:", parsed ? parsed.length : 0);
-      // Show only text before <SCHEDULE> — simple split avoids any regex edge cases
+      // Show only text before <SCHEDULE> — strip SUMMARY and GCAL tags too
       const displayText = raw.split("<SCHEDULE>")[0]
         .replace(/<SUMMARY>[\s\S]*?<\/SUMMARY>/g, "")
         .replace(/<GCAL_EVENTS>[\s\S]*?<\/GCAL_EVENTS>/g, "")
