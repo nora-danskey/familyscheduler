@@ -122,13 +122,11 @@ HOUSEHOLD RULES:
 ${ruleLines}
 
 WORK HOURS RULES:
-- Each parent needs exactly 45 hours/week of work
-- Work can happen 6am–10pm, but ONLY when the other parent is with the kids during kid-coverage windows
-- Kid coverage windows: 7:00am–9:00am (morning) and 4:15pm–8:30pm (afternoon/evening through bedtime)
-- Dinner together 7:00–7:30pm is sacred — neither parent works then
-- Bedtime 7:30–8:30pm: both parents engaged with kids (split or one solo)
-- Work travel days: assume traveling parent works 9 hours that day
-- When one parent is traveling: home parent covers all kid tasks; solo parenting hours bank as equity
+- Nora and Patrick each work independently — each needs 45h/week (90h combined)
+- If a parent has an all-day travel event that week, subtract 9h per travel day (e.g. 2 travel days = 27h that week)
+- During daycare hours (drop-off to pickup, ~9am–4:15pm weekdays) BOTH parents can work simultaneously — no coverage needed
+- Outside daycare hours, working parent needs the other parent covering kids
+- No work during dinner (6:30–7:30pm) or bedtime (7:30–8:30pm) — both parents present
 
 FIXED DAILY ANCHORS:
 - Morning/breakfast: 7:00–8:20am (preferred together; alternate if one parent traveling or needs morning work hours)
@@ -156,8 +154,30 @@ function getEventsForDay(events, day) {
   });
 }
 function timeToMin(t) { const [h, m] = (t || "0:00").split(":").map(Number); return h * 60 + m; }
-function computeSummaryFromBlocks(days) {
-  const empty = () => ({ workHours: 0, parentingHours: 0, exerciseHours: 0, freeHours: 0 });
+// Work hours = 45h/week each, minus 9h per travel day (all-day event tagged to that parent)
+function computeWorkHours(scheduleDays, events, eventLabels) {
+  function weekWork(weekDays) {
+    let noraTravelDays = 0, patrickTravelDays = 0;
+    weekDays.forEach(dateStr => {
+      const [y, m, d] = dateStr.split("-").map(Number);
+      const day = new Date(y, m - 1, d);
+      const dayEvs = getEventsForDay(events, day);
+      if (dayEvs.some(e => e.start?.date && eventLabels[e.id] === "nora")) noraTravelDays++;
+      if (dayEvs.some(e => e.start?.date && eventLabels[e.id] === "patrick")) patrickTravelDays++;
+    });
+    return {
+      nora: Math.max(0, 45 - 9 * noraTravelDays),
+      patrick: Math.max(0, 45 - 9 * patrickTravelDays),
+    };
+  }
+  return {
+    week1: weekWork(scheduleDays.slice(0, 7).map(d => d.date)),
+    week2: weekWork(scheduleDays.slice(7, 14).map(d => d.date)),
+  };
+}
+// Parenting/exercise/free hours computed from schedule blocks
+function computeParentingFromBlocks(days) {
+  const empty = () => ({ parentingHours: 0, exerciseHours: 0, freeHours: 0 });
   const noras = [empty(), empty()];
   const patricks = [empty(), empty()];
   days.forEach((day, di) => {
@@ -169,38 +189,18 @@ function computeSummaryFromBlocks(days) {
       const t = (b.title || "").toLowerCase();
       const isExercise = /exercise|gym|run|workout|swim/.test(t);
       const isParenting = /morning|breakfast|drop|pick.?up|bedtime|dinner|kid|play/.test(t);
-      const isFree = /free|rest|nap|relax|leisure|personal/.test(t);
-
-      if (who === "nora") {
-        // Individual Nora time defaults to work unless clearly parenting/exercise/free
-        if (isParenting) noras[wi].parentingHours += dur;
-        else if (isExercise) noras[wi].exerciseHours += dur;
-        else if (isFree) noras[wi].freeHours += dur;
-        else noras[wi].workHours += dur;
-      }
-      else if (who === "patrick") {
-        // Individual Patrick time defaults to work unless clearly parenting/exercise/free
-        if (isParenting) patricks[wi].parentingHours += dur;
-        else if (isExercise) patricks[wi].exerciseHours += dur;
-        else if (isFree) patricks[wi].freeHours += dur;
-        else patricks[wi].workHours += dur;
-      }
-      else if (who === "work") {
-        // Both parents work simultaneously (e.g. school hours) — each gets full credit
-        noras[wi].workHours += dur;
-        patricks[wi].workHours += dur;
-      }
-      else if (who === "exercise") { noras[wi].exerciseHours += dur; patricks[wi].exerciseHours += dur; }
-      else if (who === "free") { noras[wi].freeHours += dur; patricks[wi].freeHours += dur; }
-      else if (["family", "kids", "split", "alternate"].includes(who)) {
-        noras[wi].parentingHours += dur; patricks[wi].parentingHours += dur;
-      }
+      const addParenting = (n, p) => { n.parentingHours += dur; if (p) p.parentingHours += dur; };
+      const addExercise  = (n, p) => { n.exerciseHours += dur;  if (p) p.exerciseHours += dur;  };
+      if (who === "nora")    { isExercise ? addExercise(noras[wi]) : isParenting ? addParenting(noras[wi]) : null; }
+      else if (who === "patrick") { isExercise ? addExercise(patricks[wi]) : isParenting ? addParenting(patricks[wi]) : null; }
+      else if (who === "exercise") addExercise(noras[wi], patricks[wi]);
+      else if (["family","kids","split","alternate"].includes(who)) addParenting(noras[wi], patricks[wi]);
     }
   });
   const round = obj => Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, Math.round(v * 10) / 10]));
   return {
-    week1: { nora: round(noras[0]), patrick: round(patricks[0]), notes: "computed from schedule" },
-    week2: { nora: round(noras[1]), patrick: round(patricks[1]), notes: "computed from schedule" },
+    week1: { nora: round(noras[0]), patrick: round(patricks[0]) },
+    week2: { nora: round(noras[1]), patrick: round(patricks[1]) },
   };
 }
 function minToTime(m) {
@@ -631,10 +631,16 @@ export default function FamilyScheduler() {
   useEffect(() => { save("fs_cal_id", calendarId); }, [calendarId]);
   useEffect(() => { save("fs_rules", rules); }, [rules]);
   useEffect(() => { save("fs_schedule", scheduleDays); }, [scheduleDays]);
-  // Always recompute summary from blocks so totals stay accurate regardless of AI output
+  // Recompute totals whenever schedule or calendar data changes
   useEffect(() => {
-    if (scheduleDays.length > 0) setSummary(computeSummaryFromBlocks(scheduleDays));
-  }, [scheduleDays]);
+    if (scheduleDays.length === 0) return;
+    const work = computeWorkHours(scheduleDays, events, eventLabels);
+    const other = computeParentingFromBlocks(scheduleDays);
+    setSummary({
+      week1: { nora: { workHours: work.week1.nora, ...other.week1.nora }, patrick: { workHours: work.week1.patrick, ...other.week1.patrick }, notes: "" },
+      week2: { nora: { workHours: work.week2.nora, ...other.week2.nora }, patrick: { workHours: work.week2.patrick, ...other.week2.patrick }, notes: "" },
+    });
+  }, [scheduleDays, events, eventLabels]);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   async function loadGoogleCalendar() {
@@ -757,8 +763,7 @@ export default function FamilyScheduler() {
         setActiveTab("schedule-2wk");
       }
 
-      // Always compute totals from schedule blocks — don't trust AI's SUMMARY numbers
-      if (normalized) setSummary(computeSummaryFromBlocks(normalized));
+      // Summary is recomputed by useEffect on scheduleDays change
 
       // Parse GCAL
       const gcalMatch = raw.match(/<GCAL_EVENTS>([\s\S]*?)<\/GCAL_EVENTS>/);
