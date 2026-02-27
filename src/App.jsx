@@ -111,7 +111,7 @@ function buildSystemPrompt(a, b, events, labels, rules) {
 1. When suggesting a schedule: output ONLY <SUMMARY>...</SUMMARY> then <SCHEDULE>...</SCHEDULE> then 2 plain sentences. NO text before <SUMMARY>. NO markdown. NO headers.
 2. Use compact block keys: {"s":"HH:MM","e":"HH:MM","t":"title","w":"who"} — nothing else in each block.
 3. Labels must be "Day Date" only e.g. "Mon Feb 24" — no annotations.
-4. Include ALL 14 days in <SCHEDULE>. WHO values: "family","nora","patrick","work","exercise","kids","free","split","alternate"
+4. Include ALL 14 days in <SCHEDULE>. WHO values: "family","nora","patrick","work","exercise","kids","free","split","alternate" — use "work" when BOTH parents work simultaneously (e.g. school hours); use "nora" or "patrick" for individual work slots outside school hours
 5. <SUMMARY> format: {"week1":{"nora":{"workHours":0,"parentingHours":0,"exerciseHours":0,"freeHours":0},"patrick":{...},"notes":"..."},"week2":{...}}
 
 You are a warm family scheduling assistant for ${a} and ${b}. Suggest practical rhythms, not micromanagement.
@@ -179,9 +179,10 @@ function computeSummaryFromBlocks(days) {
       if (who === "nora") addTo(noras[wi], dur);
       else if (who === "patrick") addTo(patricks[wi], dur);
       else if (who === "work") {
+        // "work" means both parents working simultaneously (e.g. school hours) — each gets full credit
         if (/nora/.test(t)) addTo(noras[wi], dur);
         else if (/patrick/.test(t)) addTo(patricks[wi], dur);
-        else { addTo(noras[wi], dur / 2); addTo(patricks[wi], dur / 2); }
+        else { addTo(noras[wi], dur); addTo(patricks[wi], dur); }
       }
       else if (who === "exercise") { noras[wi].exerciseHours += dur; patricks[wi].exerciseHours += dur; }
       else if (who === "free") { noras[wi].freeHours += dur; patricks[wi].freeHours += dur; }
@@ -632,14 +633,25 @@ export default function FamilyScheduler() {
     if (!gcalToken) { setView("app"); return; }
     setCalLoading(true);
     try {
-      const twoWeeksOut = new Date(startDate.getTime() + 14 * 86400000);
+      // Reset to midnight so time-of-day doesn't affect which events are fetched
+      const fetchStart = new Date(startDate);
+      fetchStart.setHours(0, 0, 0, 0);
+      const fetchEnd = new Date(startDate);
+      fetchEnd.setDate(fetchEnd.getDate() + 15); // 14 days shown + 1 day buffer
+      fetchEnd.setHours(0, 0, 0, 0);
       const res = await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?maxResults=100&orderBy=startTime&singleEvents=true&timeMin=${startDate.toISOString()}&timeMax=${twoWeeksOut.toISOString()}`,
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?maxResults=200&orderBy=startTime&singleEvents=true&timeMin=${fetchStart.toISOString()}&timeMax=${fetchEnd.toISOString()}`,
         { headers: { Authorization: `Bearer ${gcalToken}` } }
       );
       const data = await res.json();
-      if (data.items) setEvents(data.items);
-    } catch {}
+      if (data.error) {
+        alert(`Calendar error: ${data.error.message || JSON.stringify(data.error)}`);
+      } else if (data.items) {
+        setEvents(data.items);
+      }
+    } catch (e) {
+      alert(`Failed to load calendar: ${e.message}`);
+    }
     setCalLoading(false);
     setView("app");
   }
