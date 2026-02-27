@@ -167,22 +167,28 @@ function computeSummaryFromBlocks(days) {
       if (dur <= 0) continue;
       const who = (b.who || "").toLowerCase();
       const t = (b.title || "").toLowerCase();
-      const isWork = /work/.test(t);
       const isExercise = /exercise|gym|run|workout|swim/.test(t);
       const isParenting = /morning|breakfast|drop|pick.?up|bedtime|dinner|kid|play/.test(t);
-      const addTo = (bucket, hrs) => {
-        if (isWork) bucket.workHours += hrs;
-        else if (isExercise) bucket.exerciseHours += hrs;
-        else if (isParenting) bucket.parentingHours += hrs;
-        else bucket.freeHours += hrs;
-      };
-      if (who === "nora") addTo(noras[wi], dur);
-      else if (who === "patrick") addTo(patricks[wi], dur);
+      const isFree = /free|rest|nap|relax|leisure|personal/.test(t);
+
+      if (who === "nora") {
+        // Individual Nora time defaults to work unless clearly parenting/exercise/free
+        if (isParenting) noras[wi].parentingHours += dur;
+        else if (isExercise) noras[wi].exerciseHours += dur;
+        else if (isFree) noras[wi].freeHours += dur;
+        else noras[wi].workHours += dur;
+      }
+      else if (who === "patrick") {
+        // Individual Patrick time defaults to work unless clearly parenting/exercise/free
+        if (isParenting) patricks[wi].parentingHours += dur;
+        else if (isExercise) patricks[wi].exerciseHours += dur;
+        else if (isFree) patricks[wi].freeHours += dur;
+        else patricks[wi].workHours += dur;
+      }
       else if (who === "work") {
-        // "work" means both parents working simultaneously (e.g. school hours) — each gets full credit
-        if (/nora/.test(t)) addTo(noras[wi], dur);
-        else if (/patrick/.test(t)) addTo(patricks[wi], dur);
-        else { addTo(noras[wi], dur); addTo(patricks[wi], dur); }
+        // Both parents work simultaneously (e.g. school hours) — each gets full credit
+        noras[wi].workHours += dur;
+        patricks[wi].workHours += dur;
       }
       else if (who === "exercise") { noras[wi].exerciseHours += dur; patricks[wi].exerciseHours += dur; }
       else if (who === "free") { noras[wi].freeHours += dur; patricks[wi].freeHours += dur; }
