@@ -629,9 +629,17 @@ export default function FamilyScheduler() {
       return ev ? `"${ev.summary}" → ${tag}` : null;
     }).filter(Boolean).join("\n");
 
+    // Pre-compute travel periods from all-day events so AI doesn't have to correlate raw JSON + tags itself
+    const travelLines = events.filter(e => e.start?.date).map(e => {
+      const tag = eventLabels[e.id];
+      if (tag !== "nora" && tag !== "patrick") return null;
+      return `- ${tag}: ${e.summary} (${e.start.date} to ${e.end?.date || e.start.date}, all-day — away, no home duties)`;
+    }).filter(Boolean);
+    const travelSection = travelLines.length ? `\nTRAVEL PERIODS — parent is physically away, cannot do morning/drop-off/pickup/dinner/bedtime:\n${travelLines.join("\n")}` : "";
+
     const isScheduleReq = /schedule|suggest|two.?week|2.week/i.test(text);
-    const fmtReminder = isScheduleReq ? "\n\n[OUTPUT FORMAT REQUIRED: <SUMMARY>{\"week1\":{\"nora\":{\"workHours\":0,\"parentingHours\":0,\"exerciseHours\":0,\"freeHours\":0},\"patrick\":{...},\"notes\":\"\"},\"week2\":{...}}</SUMMARY> then <SCHEDULE>[{\"date\":\"YYYY-MM-DD\",\"label\":\"Mon Feb 24\",\"blocks\":[{\"s\":\"HH:MM\",\"e\":\"HH:MM\",\"t\":\"title\",\"w\":\"who\"}]}]</SCHEDULE> then max 2 plain sentences. Output SUMMARY tag FIRST. No text before it. Include all 14 days. Respect all-day events: a parent with an all-day travel event cannot do any home duties that day.]" : "";
-    const userMsg = { role: "user", content: `CALENDAR DATA:\n${calData}\n\nEVENT TAGS:\n${tagLines || "None"}\n\nUSER: ${text}${fmtReminder}` };
+    const fmtReminder = isScheduleReq ? "\n\n[OUTPUT FORMAT REQUIRED: <SUMMARY>{\"week1\":{\"nora\":{\"workHours\":0,\"parentingHours\":0,\"exerciseHours\":0,\"freeHours\":0},\"patrick\":{...},\"notes\":\"\"},\"week2\":{...}}</SUMMARY> then <SCHEDULE>[{\"date\":\"YYYY-MM-DD\",\"label\":\"Mon Feb 24\",\"blocks\":[{\"s\":\"HH:MM\",\"e\":\"HH:MM\",\"t\":\"title\",\"w\":\"who\"}]}]</SCHEDULE> then max 2 plain sentences. Output SUMMARY tag FIRST. No text before it. Include all 14 days. Honor travel periods — traveling parent cannot do any home duties.]" : "";
+    const userMsg = { role: "user", content: `CALENDAR DATA:\n${calData}\n\nEVENT TAGS:\n${tagLines || "None"}${travelSection}\n\nUSER: ${text}${fmtReminder}` };
     const newMsgs = [...messages, userMsg];
     setMessages(newMsgs);
     setInput("");
