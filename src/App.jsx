@@ -29,7 +29,7 @@ const WHO_OPTIONS = [
   { id: "family", label: "Family together", color: "#8E24AA" },
   { id: "nora", label: "Nora", color: "#7986CB" },
   { id: "patrick", label: "Patrick", color: "#33B679" },
-  { id: "alternate", label: "Alternate (fair split)", color: "#F6BF26" },
+  { id: "alternate", label: "Alternate (balanced split)", color: "#F6BF26" },
   { id: "split", label: "Split (each takes a kid)", color: "#E67C73" },
   { id: "each", label: "Each independently", color: "#0B8043" },
 ];
@@ -122,19 +122,34 @@ HOUSEHOLD RULES:
 ${ruleLines}
 
 WORK HOURS RULES:
-- Nora and Patrick each work independently — each needs 45h/week (90h combined)
-- If a parent has an all-day travel event that week, subtract 9h per travel day (e.g. 2 travel days = 27h that week)
+- Nora and Patrick each work independently — each needs 45h/week (90h combined), weekdays only
+- NO work on Sat or Sun — ever. If target can't fit in weekdays, note it but do not add weekend work
+- If a parent has an all-day travel event that week, subtract 9h per travel day from their target
+- Either parent can work any time 6am–10pm as long as kids have coverage
 - During daycare hours (drop-off to pickup, ~9am–4:15pm weekdays) BOTH parents can work simultaneously — no coverage needed
-- Outside daycare hours, working parent needs the other parent covering kids
+- Outside daycare hours (6am–9am and 4:15pm–10pm), only one parent works at a time while the other covers kids
+- Whichever parent does pickup that day must end their work block at 4:15pm — the other parent can continue working
 - No work during dinner (6:30–7:30pm) or bedtime (7:30–8:30pm) — both parents present
+- Do not schedule a parent for work during their own timed flight or travel event window
 
-FIXED DAILY ANCHORS:
+WEEKENDS (Sat–Sun):
+- Breakfast together: 7:00–9:00am (family, one parent minimum, counts as parenting)
+- Fill remaining unscheduled daytime (9am–6pm) with "Family play" (one parent minimum, counts as parenting)
+- Include any kid activities from the calendar (swim, music class, parties) as blocks on the correct day/time
+- If a parent has a personal event (party, trip), they cannot cover family duties during that window
+
+FIXED DAILY ANCHORS (weekdays):
 - Morning/breakfast: 7:00–8:20am (preferred together; alternate if one parent traveling or needs morning work hours)
-- Drop-off: 8:20–9:00am · Pickup: 4:15–5:30pm (weekdays)
-- Afternoon play: 5:30–6:30pm (weekdays, at least one parent present)
+- Drop-off: 8:20–9:00am · Pickup: 4:15–5:30pm
+- Afternoon play: 5:30–6:30pm (at least one parent present)
 - Dinner together: 6:30–7:30pm (always, no exceptions)
-- Bedtime: 7:30–8:30pm (preferred split, one solo OK)
+- Bedtime: 7:30–8:30pm (preferred balanced, one solo OK)
 - Exercise: 1 hour each, daily, any time during waking hours
+
+CALENDAR INTEGRATION:
+- Read all events in CALENDAR DATA and include kid activities (swim, music, parties) as blocks in the schedule
+- Timed personal events for one parent mean that parent is unavailable during that window — assign duties to the other parent
+- If a parent has a personal commitment that conflicts with kid coverage and no other parent is available, flag it with a note
 
 EVENT TAGS: ${tagLines || "None yet."}
 CALENDAR DATA sent with each message.`;
@@ -156,19 +171,26 @@ function getEventsForDay(events, day) {
 function timeToMin(t) { const [h, m] = (t || "0:00").split(":").map(Number); return h * 60 + m; }
 // Work hours = 45h/week each, minus 9h per travel day (all-day event tagged to that parent)
 function computeWorkHours(scheduleDays, events, eventLabels) {
+  const MAX_WEEKDAY_HOURS = 9; // max realistic work hours in a single weekday
   function weekWork(weekDays) {
     let noraTravelDays = 0, patrickTravelDays = 0;
+    let noraWorkableDays = 0, patrickWorkableDays = 0;
     weekDays.forEach(dateStr => {
       const [y, m, d] = dateStr.split("-").map(Number);
       const day = new Date(y, m - 1, d);
+      const dow = day.getDay();
+      if (dow === 0 || dow === 6) return; // skip weekends
       const dayEvs = getEventsForDay(events, day);
-      if (dayEvs.some(e => e.start?.date && eventLabels[e.id] === "nora")) noraTravelDays++;
-      if (dayEvs.some(e => e.start?.date && eventLabels[e.id] === "patrick")) patrickTravelDays++;
+      const noraTravels = dayEvs.some(e => e.start?.date && eventLabels[e.id] === "nora");
+      const patrickTravels = dayEvs.some(e => e.start?.date && eventLabels[e.id] === "patrick");
+      if (noraTravels) noraTravelDays++; else noraWorkableDays++;
+      if (patrickTravels) patrickTravelDays++; else patrickWorkableDays++;
     });
-    return {
-      nora: Math.max(0, 45 - 9 * noraTravelDays),
-      patrick: Math.max(0, 45 - 9 * patrickTravelDays),
-    };
+    const noraTarget = Math.max(0, 45 - 9 * noraTravelDays);
+    const patrickTarget = Math.max(0, 45 - 9 * patrickTravelDays);
+    const noraWarning = noraTarget > noraWorkableDays * MAX_WEEKDAY_HOURS;
+    const patrickWarning = patrickTarget > patrickWorkableDays * MAX_WEEKDAY_HOURS;
+    return { nora: noraTarget, patrick: patrickTarget, noraWarning, patrickWarning };
   }
   return {
     week1: weekWork(scheduleDays.slice(0, 7).map(d => d.date)),
@@ -636,11 +658,17 @@ export default function FamilyScheduler() {
     if (scheduleDays.length === 0) return;
     const work = computeWorkHours(scheduleDays, events, eventLabels);
     const other = computeParentingFromBlocks(scheduleDays);
+    const weekNote = (w, a, b) => {
+      const warnings = [];
+      if (w.noraWarning) warnings.push(`⚠ ${a} may not reach ${w.nora}h on weekdays alone this week`);
+      if (w.patrickWarning) warnings.push(`⚠ ${b} may not reach ${w.patrick}h on weekdays alone this week`);
+      return warnings.join(" · ");
+    };
     setSummary({
-      week1: { nora: { workHours: work.week1.nora, ...other.week1.nora }, patrick: { workHours: work.week1.patrick, ...other.week1.patrick }, notes: "" },
-      week2: { nora: { workHours: work.week2.nora, ...other.week2.nora }, patrick: { workHours: work.week2.patrick, ...other.week2.patrick }, notes: "" },
+      week1: { nora: { workHours: work.week1.nora, ...other.week1.nora }, patrick: { workHours: work.week1.patrick, ...other.week1.patrick }, notes: weekNote(work.week1, partnerAName, partnerBName) },
+      week2: { nora: { workHours: work.week2.nora, ...other.week2.nora }, patrick: { workHours: work.week2.patrick, ...other.week2.patrick }, notes: weekNote(work.week2, partnerAName, partnerBName) },
     });
-  }, [scheduleDays, events, eventLabels]);
+  }, [scheduleDays, events, eventLabels, partnerAName, partnerBName]);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   async function loadGoogleCalendar() {
@@ -785,7 +813,7 @@ export default function FamilyScheduler() {
 
   const selectedDayData = scheduleDays.find(d => d.date === selectedDay);
   const quickPrompts = [
-    `Suggest a fair two-week schedule using our household rules`,
+    `Suggest a balanced two-week schedule using our household rules`,
     `Nora is in Ojai Wed–Sun — map out Patrick's solo days and rebalance next week`,
     `Show me a typical weekday`,
     `Who's carrying more load right now?`,
@@ -809,7 +837,7 @@ export default function FamilyScheduler() {
             <div style={{ textAlign: "center", marginBottom: "3rem" }}>
               <div style={{ fontSize: "2.5rem", marginBottom: "1rem" }}>◎</div>
               <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: "2.2rem", color: "#F3F4F6", fontWeight: 400 }}>Family Scheduler</h1>
-              <p style={{ color: "#6B7280", marginTop: "0.75rem", fontSize: "0.95rem" }}>A fair two-week schedule, built together.</p>
+              <p style={{ color: "#6B7280", marginTop: "0.75rem", fontSize: "0.95rem" }}>A balanced two-week schedule, built together.</p>
             </div>
             <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "16px", padding: "2rem" }}>
               {[["Your name", partnerAName, setPartnerAName, "e.g. Nora"], ["Partner's name (the traveler)", partnerBName, setPartnerBName, "e.g. Patrick"]].map(([lbl, val, set, ph]) => (
@@ -1023,7 +1051,7 @@ export default function FamilyScheduler() {
             <div style={{ padding: "9px 14px", borderTop: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
               <div style={{ display: "flex", gap: "6px", alignItems: "flex-end", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)", borderRadius: "9px", padding: "7px 10px" }}>
                 <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); } }}
-                  placeholder="Ask to suggest a schedule, adjust fairness, or describe what you need…" rows={1}
+                  placeholder="Ask to suggest a schedule, adjust balance, or describe what you need…" rows={1}
                   style={{ flex: 1, background: "transparent", border: "none", color: "#E5E7EB", fontFamily: "'Lora', serif", fontSize: "0.8rem", lineHeight: 1.5, maxHeight: "100px", overflowY: "auto" }} />
                 <button onClick={() => sendMessage(input)} disabled={loading || !input.trim()} style={{ width: "26px", height: "26px", borderRadius: "5px", background: input.trim() && !loading ? "linear-gradient(135deg, #F9DC5C, #F4844C)" : "rgba(255,255,255,0.06)", border: "none", color: input.trim() && !loading ? "#0D0F14" : "#4B5563", cursor: input.trim() && !loading ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: "0.78rem" }}>↑</button>
               </div>
