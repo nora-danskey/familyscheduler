@@ -924,7 +924,7 @@ export default function FamilyScheduler() {
 
         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
           {/* LEFT PANEL */}
-          <div style={{ width: "52%", borderRight: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ width: "75%", borderRight: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {/* Tab bar */}
             <div style={{ display: "flex", padding: "8px 12px 0", gap: "2px", flexShrink: 0, overflowX: "auto" }}>
               {TABS.map(tab => (
@@ -1041,7 +1041,7 @@ export default function FamilyScheduler() {
           </div>
 
           {/* RIGHT: CHAT */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ width: "25%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
               <p style={{ fontFamily: "'Playfair Display', serif", fontSize: "0.9rem", color: "#F3F4F6", fontStyle: "italic" }}>Schedule with AI</p>
               <p style={{ fontSize: "0.62rem", fontFamily: "'DM Mono', monospace", color: "#4B5563", marginTop: "2px" }}>Uses your household rules + event tags · Timeline + totals update automatically</p>
